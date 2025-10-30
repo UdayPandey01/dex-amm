@@ -12,11 +12,10 @@ contract Router {
     }
 
     function _getReserves(
-        address factory,
         address tokenA,
         address tokenB
-    ) external view returns (uint256 reserveA, uint256 reserveB) {
-        (address token0,) = sortTokens(tokenA, tokenB);
+    ) internal view returns (uint256 reserveA, uint256 reserveB) {
+        (address token0,) = Library.sortTokens(tokenA, tokenB);
         (uint256 reserve0, uint256 reserve1) = Pair(Library.pairFor(factory, tokenA, tokenB)).getReserves();
         (reserveA, reserveB) = tokenA == token0 ? (reserve0, reserve1) : (reserve1, reserve0);
     }
@@ -33,16 +32,15 @@ contract Router {
     // }
 
     function getAmountsOut(
-        address factory,
         uint256 amountIn,
         address[] calldata path
-    ) external returns (uint256[] memory amounts) {
+    ) internal returns (uint256[] memory amounts) {
         require(path.length >= 2, "Invalid path");
         amounts = new uint256[](path.length);
         amounts[0] = amountIn;
         for(uint256 i; i < path.length - 1; i++) {
-            (uint256 reserveIn, uint256 reserveOut) = this.getReserves(factory, path[i], path[i + 1]);
-            amounts[i + 1] = this.getAmountOut(amounts[i], reserveIn, reserveOut);
+            (uint256 reserveIn, uint256 reserveOut) = _getReserves(path[i], path[i + 1]);
+            amounts[i + 1] = Library.getAmountOut(amounts[i], reserveIn, reserveOut);
         }
     }
 
