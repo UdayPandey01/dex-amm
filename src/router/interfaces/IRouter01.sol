@@ -21,9 +21,13 @@ interface IRouter01 {
         address token,
         uint256 amountTokenDesired,
         uint256 amountTokenMin,
+        uint256 amountETHMin,
         address to,
         uint256 deadline
-    ) external payable returns (uint256 amountToken, uint256 amountETH, uint256 liquidity);
+    )
+        external
+        payable
+        returns (uint256 amountToken, uint256 amountETH, uint256 liquidity);
 
     function removeLiquidity(
         address tokenA,
@@ -128,12 +132,12 @@ interface IRouter01 {
     ) external pure returns (uint256 amountIn);
 
     function getAmountsOut(
-        uint256 amountIn, 
+        uint256 amountIn,
         address[] calldata path
     ) external view returns (uint256[] memory amounts);
 
     function getAmountsIn(
-        uint256 amountOut, 
+        uint256 amountOut,
         address[] calldata path
     ) external view returns (uint256[] memory amounts);
 }
