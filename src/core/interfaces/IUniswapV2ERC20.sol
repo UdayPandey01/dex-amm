@@ -17,6 +17,8 @@ interface IUniswapV2ERC20 {
 
     function totalSupply() external view returns (uint256);
 
+    function balanceOf(address owner) external view returns (uint256);
+
     function allowance(
         address owner,
         address spender

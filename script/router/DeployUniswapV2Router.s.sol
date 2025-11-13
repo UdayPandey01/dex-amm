@@ -25,18 +25,19 @@ contract DeployUniswapV2Router is Script {
     function run() external {
         uint256 chainId = block.chainid;
 
-        if(chainId == 1){
+        if (chainId == 1) {
             console2.log("Deploying this on Ethereum Mainnet");
             deployerPrivateKey = vm.envUint("MAINNET_PRIVATE_KEY");
-        } else if(chainId == 11155111) {
+        } else if (chainId == 11155111) {
             console2.log("Deploying this on Sepolia Testnet");
             deployerPrivateKey = vm.envUint("SEPOLIA_PRIVATE_KEY");
-        } else if(chainId == 31337) {
+        } else if (chainId == 31337) {
             console2.log("Deploying this on Localhost Anvil");
-            deployerPrivateKey = vm.envUint("ANVIL_PRIVATE_KEY");
+            deployerPrivateKey = 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80;
+            console2.log("Using default Foundry test account");
         } else {
             revert UnsupportedNetwork();
-        }    
+        }
 
         deployer = vm.addr(deployerPrivateKey);
 
@@ -60,4 +61,3 @@ contract DeployUniswapV2Router is Script {
         console2.log("Router address:", address(router));
     }
 }
-

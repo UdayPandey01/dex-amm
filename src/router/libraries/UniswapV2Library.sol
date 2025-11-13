@@ -32,7 +32,9 @@ library UniswapV2Library {
                             hex"ff",
                             factory,
                             keccak256(abi.encodePacked(token0, token1)),
-                            hex"661cd7b53f97d9a236aa55ba2f999ba943e196d5017547d53bfa76e9feda1224"
+                            // INIT_CODE_PAIR_HASH - Use factory.INIT_CODE_PAIR_HASH() to get correct value
+                            // This must match keccak256(abi.encodePacked(type(UniswapV2Pair).creationCode))
+                            hex"853e06e0f110fbbc1bc77593be1f5d121a0e22b8aa46a7bb47e3b3d8d65b54ae"
                         )
                     )
                 )
