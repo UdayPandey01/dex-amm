@@ -961,7 +961,7 @@ contract Router01Test is Test {
             liquidity,
             0,
             0,
-            musk, 
+            musk,
             block.timestamp + 300
         );
 
@@ -1105,6 +1105,1214 @@ contract Router01Test is Test {
 
         console.log(
             "\n=== Verified: MINIMUM_LIQUIDITY permanently locked at address(0) ==="
+        );
+    }
+
+    function testSwapExactTokensForTokens() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 swapAmountIn = 10 ether;
+
+        uint256 muskDOLBefore = DOL.balanceOf(musk);
+        uint256 muskUPBefore = UP.balanceOf(musk);
+
+        address pairAddress = factory.getPair(address(DOL), address(UP));
+        (uint112 reserve0Before, uint112 reserve1Before, ) = IUniswapV2Pair(
+            pairAddress
+        ).getReserves();
+
+        DOL.approve(address(router), swapAmountIn);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        console.log("\n=== Before Swap ===");
+        console.log("Musk DOL balance:", muskDOLBefore);
+        console.log("Musk UP balance:", muskUPBefore);
+        console.log("Reserve0:", reserve0Before);
+        console.log("Reserve1:", reserve1Before);
+
+        uint256[] memory amounts = router.swapExactTokensForTokens(
+            swapAmountIn,
+            0,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+
+        uint256 muskDOLAfter = DOL.balanceOf(musk);
+        uint256 muskUPAfter = UP.balanceOf(musk);
+
+        (uint112 reserve0After, uint112 reserve1After, ) = IUniswapV2Pair(
+            pairAddress
+        ).getReserves();
+
+        console.log("\n=== After Swap ===");
+        console.log("Musk DOL balance:", muskDOLAfter);
+        console.log("Musk UP balance:", muskUPAfter);
+        console.log("Reserve0:", reserve0After);
+        console.log("Reserve1:", reserve1After);
+        console.log("Amount IN:", amounts[0]);
+        console.log("Amount OUT:", amounts[1]);
+
+        assertEq(amounts[0], swapAmountIn, "Input amount incorrect");
+        assertTrue(amounts[1] > 0, "Output amount should be greater than zero");
+
+        assertEq(
+            muskDOLAfter,
+            muskDOLBefore - swapAmountIn,
+            "Musk DOL balance should decrease by swap amount"
+        );
+        assertEq(
+            muskUPAfter,
+            muskUPBefore + amounts[1],
+            "Musk UP balance should increase by output amount"
+        );
+
+        address token0 = IUniswapV2Pair(pairAddress).token0();
+        if (token0 == address(DOL)) {
+            assertEq(
+                reserve0After,
+                reserve0Before + swapAmountIn,
+                "DOL reserves should increase"
+            );
+            assertEq(
+                reserve1After,
+                reserve1Before - amounts[1],
+                "UP reserves should decrease"
+            );
+        } else {
+            assertEq(
+                reserve1After,
+                reserve1Before + swapAmountIn,
+                "DOL reserves should increase"
+            );
+            assertEq(
+                reserve0After,
+                reserve0Before - amounts[1],
+                "UP reserves should decrease"
+            );
+        }
+    }
+
+    function testSwapExactTokensForTokensSlippageProtection() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 swapAmountIn = 10 ether;
+        DOL.approve(address(router), swapAmountIn);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        uint256 excessiveAmountOutMin = 500 ether;
+        vm.expectRevert(bytes("UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT"));
+        router.swapExactTokensForTokens(
+            swapAmountIn,
+            excessiveAmountOutMin,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+    }
+
+    function testSwapExactTokensForTokensWithoutApproval() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 swapAmountIn = 10 ether;
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        vm.expectRevert();
+        router.swapExactTokensForTokens(
+            swapAmountIn,
+            0,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+    }
+
+    function testSwapExactTokensForTokensExpiredDeadline() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 swapAmountIn = 10 ether;
+        DOL.approve(address(router), swapAmountIn);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        uint256 expiredDeadline = 100;
+        vm.warp(expiredDeadline + 1);
+
+        vm.expectRevert(bytes("UniswapV2Router:EXPIRED"));
+        router.swapExactTokensForTokens(
+            swapAmountIn,
+            0,
+            path,
+            musk,
+            expiredDeadline
+        );
+        vm.stopPrank();
+    }
+
+    function testSwapExactTokensForTokensToCustomAddress() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+        uint256 swapAmountIn = 10 ether;
+        DOL.approve(address(router), swapAmountIn);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        uint256 deployerUPBefore = UP.balanceOf(deployer);
+        uint256 muskUPBefore = UP.balanceOf(musk);
+        uint256 muskDOLBefore = DOL.balanceOf(musk);
+
+        uint256[] memory amounts = router.swapExactTokensForTokens(
+            swapAmountIn,
+            0,
+            path,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        uint256 deployerUPAfter = UP.balanceOf(deployer);
+        uint256 muskUPAfter = UP.balanceOf(musk);
+        uint256 muskDOLAfter = DOL.balanceOf(musk);
+
+        console.log("\n=== Custom Address Swap ===");
+        console.log("Deployer UP before:", deployerUPBefore);
+        console.log("Deployer UP after:", deployerUPAfter);
+        console.log("Musk UP before:", muskUPBefore);
+        console.log("Musk UP after:", muskUPAfter);
+        console.log("Musk DOL before:", muskDOLBefore);
+        console.log("Musk DOL after:", muskDOLAfter);
+        console.log("Amount OUT:", amounts[1]);
+
+        assertEq(
+            deployerUPAfter,
+            deployerUPBefore + amounts[1],
+            "Deployer should receive UP tokens from swap"
+        );
+
+        assertEq(
+            muskUPAfter,
+            muskUPBefore,
+            "Musk UP balance should stay the same (output sent to deployer)"
+        );
+
+        assertEq(
+            muskDOLAfter,
+            muskDOLBefore - swapAmountIn,
+            "Musk should have paid DOL for the swap"
+        );
+    }
+
+    function testSwapExactTokensForTokensConstantProduct() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        address pairAddress = factory.getPair(address(DOL), address(UP));
+        (uint112 reserve0Before, uint112 reserve1Before, ) = IUniswapV2Pair(
+            pairAddress
+        ).getReserves();
+
+        uint256 kBefore = uint256(reserve0Before) * uint256(reserve1Before);
+        console.log("\n=== Before Swap ===");
+        console.log("Reserve0:", reserve0Before);
+        console.log("Reserve1:", reserve1Before);
+        console.log("K before:", kBefore);
+
+        vm.startPrank(musk);
+
+        uint256 swapAmountIn = 10 ether;
+        DOL.approve(address(router), swapAmountIn);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        router.swapExactTokensForTokens(
+            swapAmountIn,
+            0,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        (uint112 reserve0After, uint112 reserve1After, ) = IUniswapV2Pair(
+            pairAddress
+        ).getReserves();
+
+        uint256 kAfter = uint256(reserve0After) * uint256(reserve1After);
+        console.log("\n=== After Swap ===");
+        console.log("Reserve0:", reserve0After);
+        console.log("Reserve1:", reserve1After);
+        console.log("K after:", kAfter);
+
+        assertTrue(
+            kAfter > kBefore,
+            "K after swap should be greater than K before due to fees"
+        );
+    }
+
+    function testSwapExactTokensForTokensReverseDirection() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 swapAmountIn = 100 ether; 
+
+        uint256 muskUPBefore = UP.balanceOf(musk);
+        uint256 muskDOLBefore = DOL.balanceOf(musk);
+
+        address pairAddress = factory.getPair(address(DOL), address(UP));
+        (uint112 reserve0Before, uint112 reserve1Before, ) = IUniswapV2Pair(
+            pairAddress
+        ).getReserves();
+
+        UP.approve(address(router), swapAmountIn);
+
+        address[] memory path = new address[](2);
+        path[0] = address(UP);
+        path[1] = address(DOL);
+
+        console.log("\n=== Before Reverse Swap (UP -> DOL) ===");
+        console.log("Musk UP balance:", muskUPBefore);
+        console.log("Musk DOL balance:", muskDOLBefore);
+        console.log("Reserve0:", reserve0Before);
+        console.log("Reserve1:", reserve1Before);
+
+        uint256[] memory amounts = router.swapExactTokensForTokens(
+            swapAmountIn,
+            0,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+
+        uint256 muskUPAfter = UP.balanceOf(musk);
+        uint256 muskDOLAfter = DOL.balanceOf(musk);
+
+        (uint112 reserve0After, uint112 reserve1After, ) = IUniswapV2Pair(
+            pairAddress
+        ).getReserves();
+
+        console.log("\n=== After Reverse Swap ===");
+        console.log("Musk UP balance:", muskUPAfter);
+        console.log("Musk DOL balance:", muskDOLAfter);
+        console.log("Reserve0:", reserve0After);
+        console.log("Reserve1:", reserve1After);
+        console.log("Amount IN (UP):", amounts[0]);
+        console.log("Amount OUT (DOL):", amounts[1]);
+
+        assertEq(
+            amounts[0],
+            swapAmountIn,
+            "Input amount should match swap amount"
+        );
+        assertTrue(amounts[1] > 0, "Output DOL should be greater than zero");
+
+        assertEq(
+            muskUPAfter,
+            muskUPBefore - swapAmountIn,
+            "Musk UP balance should decrease by swap amount"
+        );
+        assertEq(
+            muskDOLAfter,
+            muskDOLBefore + amounts[1],
+            "Musk DOL balance should increase by output amount"
+        );
+
+        address token0 = IUniswapV2Pair(pairAddress).token0();
+        if (token0 == address(DOL)) {
+            assertEq(
+                reserve0After,
+                reserve0Before - amounts[1],
+                "DOL reserves should decrease (output)"
+            );
+            assertEq(
+                reserve1After,
+                reserve1Before + swapAmountIn,
+                "UP reserves should increase (input)"
+            );
+        } else {
+            assertEq(
+                reserve1After,
+                reserve1Before - amounts[1],
+                "DOL reserves should decrease (output)"
+            );
+            assertEq(
+                reserve0After,
+                reserve0Before + swapAmountIn,
+                "UP reserves should increase (input)"
+            );
+        }
+    }
+
+    function testSwapExactTokensForTokensConsecutivePriceImpact() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 swapAmountIn = 10 ether;
+
+        DOL.approve(address(router), swapAmountIn * 2); 
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        console.log("\n=== First Swap ===");
+        uint256[] memory amounts1 = router.swapExactTokensForTokens(
+            swapAmountIn,
+            0,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        console.log("Input:", amounts1[0]);
+        console.log("Output:", amounts1[1]);
+
+        console.log("\n=== Second Identical Swap ===");
+        uint256[] memory amounts2 = router.swapExactTokensForTokens(
+            swapAmountIn,
+            0,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        console.log("Input:", amounts2[0]);
+        console.log("Output:", amounts2[1]);
+
+        vm.stopPrank();
+
+        assertEq(
+            amounts1[0],
+            amounts2[0],
+            "Both swaps should have same input amount"
+        );
+
+        assertTrue(
+            amounts2[1] < amounts1[1],
+            "Second swap should output LESS tokens (worse rate due to price impact)"
+        );
+
+        uint256 priceDifference = amounts1[1] - amounts2[1];
+        console.log("\n=== Price Impact ===");
+        console.log("First output:", amounts1[1]);
+        console.log("Second output:", amounts2[1]);
+        console.log("Difference:", priceDifference);
+        console.log("Price impact %:", (priceDifference * 100) / amounts1[1]);
+
+        assertTrue(priceDifference > 0, "Price impact should be measurable");
+    }
+
+    function testSwapTokensForExactTokens() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 desiredOutput = 90 ether;
+        uint256 muskDOLBefore = DOL.balanceOf(musk);
+        uint256 muskUPBefore = UP.balanceOf(musk);
+
+        DOL.approve(address(router), 100 ether);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        uint256[] memory amounts = router.swapTokensForExactTokens(
+            desiredOutput,
+            100 ether,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+
+        uint256 muskDOLAfter = DOL.balanceOf(musk);
+        uint256 muskUPAfter = UP.balanceOf(musk);
+
+        console.log("\n=== After SwapTokensForExactTokens ===");
+        console.log("Musk DOL before:", muskDOLBefore);
+        console.log("Musk DOL after:", muskDOLAfter);
+        console.log("Musk UP before:", muskUPBefore);
+        console.log("Musk UP after:", muskUPAfter);
+        console.log("Amount IN (DOL):", amounts[0]);
+        console.log("Amount OUT (UP):", amounts[1]);
+        assertEq(
+            amounts[1],
+            desiredOutput,
+            "Output amount should match desired exact output"
+        );
+        assertEq(
+            muskDOLAfter,
+            muskDOLBefore - amounts[0],
+            "Musk DOL balance should decrease by input amount"
+        );
+        assertEq(
+            muskUPAfter,
+            muskUPBefore + amounts[1],
+            "Musk UP balance should increase by output amount"
+        );
+
+    }
+
+    function testSwapTokensForExactTokensSlippageProtection() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 desiredOutput = 90 ether;
+        uint256 tooLowAmountInMax = 5 ether;
+
+        DOL.approve(address(router), 100 ether);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        vm.expectRevert(bytes("UniswapV2Router: EXCESSIVE_INPUT_AMOUNT"));
+        router.swapTokensForExactTokens(
+            desiredOutput,
+            tooLowAmountInMax,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+    }
+
+    function testSwapTokensForExactTokensWithoutApproval() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 desiredOutput = 90 ether;
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        vm.expectRevert();
+        router.swapTokensForExactTokens(
+            desiredOutput,
+            100 ether,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+    }
+
+    function testSwapTokensForExactTokensExpiredDeadline() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 desiredOutput = 90 ether;
+        DOL.approve(address(router), 100 ether);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        uint256 expiredDeadline = 100;
+        vm.warp(expiredDeadline + 1);
+
+        vm.expectRevert(bytes("UniswapV2Router:EXPIRED"));
+        router.swapTokensForExactTokens(
+            desiredOutput,
+            100 ether,
+            path,
+            musk,
+            expiredDeadline
+        );
+
+        vm.stopPrank();
+    }
+
+    function testSwapTokensForExactTokensToCustomAddress() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 desiredOutput = 90 ether;
+        DOL.approve(address(router), 100 ether);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        uint256 deployerUPBefore = UP.balanceOf(deployer);
+        uint256 muskUPBefore = UP.balanceOf(musk);
+        uint256 muskDOLBefore = DOL.balanceOf(musk);
+
+        uint256[] memory amounts = router.swapTokensForExactTokens(
+            desiredOutput,
+            100 ether,
+            path,
+            deployer, 
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+
+        uint256 deployerUPAfter = UP.balanceOf(deployer);
+        uint256 muskUPAfter = UP.balanceOf(musk);
+        uint256 muskDOLAfter = DOL.balanceOf(musk);
+
+        console.log("\n=== Custom Address Swap (swapTokensForExactTokens) ===");
+        console.log("Deployer UP before:", deployerUPBefore);
+        console.log("Deployer UP after:", deployerUPAfter);
+        console.log("Musk UP before:", muskUPBefore);
+        console.log("Musk UP after:", muskUPAfter);
+        console.log("Musk DOL before:", muskDOLBefore);
+        console.log("Musk DOL after:", muskDOLAfter);
+        console.log("Amount IN (DOL):", amounts[0]);
+        console.log("Amount OUT (UP):", amounts[1]);
+
+        assertEq(
+            amounts[1],
+            desiredOutput,
+            "Output should be exact desired amount"
+        );
+
+        assertEq(
+            deployerUPAfter,
+            deployerUPBefore + desiredOutput,
+            "Deployer should receive exact UP tokens"
+        );
+
+        assertEq(
+            muskUPAfter,
+            muskUPBefore,
+            "Musk UP balance should stay the same (output sent to deployer)"
+        );
+
+        assertEq(
+            muskDOLAfter,
+            muskDOLBefore - amounts[0],
+            "Musk should have paid DOL for the swap"
+        );
+    }
+
+    /// @notice TODO: Test swap calculates input correctly
+    /// @dev Hint: Want 90 UP out, verify calculated DOL input matches getAmountsIn
+    /// @dev Assert: amounts[0] matches router library calculation
+    function testSwapTokensForExactTokensInputCalculation() public {
+        uint256 amountADesired = 100 ether;
+        uint256 amountBDesired = 1000 ether;
+
+        vm.startPrank(deployer);
+        DOL.approve(address(router), amountADesired);
+        UP.approve(address(router), amountBDesired);
+        router.addLiquidity(
+            address(DOL),
+            address(UP),
+            amountADesired,
+            amountBDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 desiredOutput = 90 ether;
+        DOL.approve(address(router), 100 ether);
+
+        address[] memory path = new address[](2);
+        path[0] = address(DOL);
+        path[1] = address(UP);
+
+        address pairAddress = factory.getPair(address(DOL), address(UP));
+        (uint112 reserve0, uint112 reserve1, ) = IUniswapV2Pair(pairAddress)
+            .getReserves();
+
+        address token0 = IUniswapV2Pair(pairAddress).token0();
+        uint256 reserveIn;
+        uint256 reserveOut;
+
+        if (token0 == address(DOL)) {
+            reserveIn = reserve0;
+            reserveOut = reserve1;
+        } else {
+            reserveIn = reserve1;
+            reserveOut = reserve0;
+        }
+
+        // amountIn = (reserveIn * amountOut * 1000) / ((reserveOut - amountOut) * 997) + 1
+        uint256 numerator = reserveIn * desiredOutput * 1000;
+        uint256 denominator = (reserveOut - desiredOutput) * 997;
+        uint256 expectedAmountIn = (numerator / denominator) + 1;
+
+        console.log("\n=== Input Calculation Verification ===");
+        console.log("Reserve IN (DOL):", reserveIn);
+        console.log("Reserve OUT (UP):", reserveOut);
+        console.log("Desired Output (UP):", desiredOutput);
+        console.log("Expected Input (DOL):", expectedAmountIn);
+
+        uint256[] memory amounts = router.swapTokensForExactTokens(
+            desiredOutput,
+            100 ether,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+
+        console.log("Actual Input (DOL):", amounts[0]);
+        console.log("Actual Output (UP):", amounts[1]);
+
+        assertEq(
+            amounts[1],
+            desiredOutput,
+            "Output should be exact desired amount"
+        );
+
+        assertEq(
+            amounts[0],
+            expectedAmountIn,
+            "Input amount should match library calculation"
+        );
+
+        assertTrue(
+            amounts[0] > 0,
+            "Input amount should be greater than zero"
+        );
+
+        assertTrue(
+            amounts[0] < desiredOutput,
+            "Due to 1:10 ratio, DOL input should be less than UP output"
+        );
+    }
+
+    function testSwapExactETHForTokens() public {
+        uint256 amountTokenDesired = 1000 ether;
+        uint256 amountETHDesired = 10 ether;
+
+        vm.startPrank(deployer);
+
+        UP.approve(address(router), amountTokenDesired);
+
+        router.addLiquidityETH{value: amountETHDesired}(
+            address(UP),
+            amountTokenDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+        vm.startPrank(musk);
+
+        uint256 ethAmountIn = 1 ether;
+
+        uint256 muskUPBefore = UP.balanceOf(musk);
+        uint256 muskETHBefore = musk.balance;
+
+        address[] memory path = new address[](2);
+        path[0] = address(weth);
+        path[1] = address(UP);
+
+        console.log("\n=== Before ETH to Token Swap ===");
+        console.log("Musk ETH balance:", muskETHBefore);
+        console.log("Musk UP balance:", muskUPBefore);
+        uint256[] memory amounts = router.swapExactETHForTokens{value: ethAmountIn}(
+            0,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+
+        uint256 muskUPAfter = UP.balanceOf(musk);
+        uint256 muskETHAfter = musk.balance;
+        console.log("\n=== After ETH to Token Swap ===");
+        console.log("Musk ETH balance:", muskETHAfter);
+        console.log("Musk UP balance:", muskUPAfter);
+        console.log("Amount IN (ETH):", amounts[0]);
+        console.log("Amount OUT (UP):", amounts[1]);
+
+        assertEq(
+            amounts[0],
+            ethAmountIn,
+            "Input ETH amount should match sent value"
+        );
+        assertTrue(amounts[1] > 0, "Output token amount should be greater than zero");
+        assertEq(
+            muskETHAfter,
+            muskETHBefore - ethAmountIn,
+            "Musk ETH balance should decrease by input amount"
+        );
+        assertEq(
+            muskUPAfter,
+            muskUPBefore + amounts[1],
+            "Musk UP balance should increase by output amount"
+        );
+    }
+
+    function testSwapExactETHForTokensSlippageProtection() public {
+        uint256 amountTokenDesired = 1000 ether;
+        uint256 amountETHDesired = 10 ether;
+
+        vm.startPrank(deployer);
+        UP.approve(address(router), amountTokenDesired);
+        router.addLiquidityETH{value: amountETHDesired}(
+            address(UP),
+            amountTokenDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 ethAmountIn = 1 ether;
+        address[] memory path = new address[](2);
+        path[0] = address(weth);
+        path[1] = address(UP);
+
+        uint256 excessiveAmountOutMin = 500 ether; // Way too high
+
+        vm.expectRevert(bytes("UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT"));
+        router.swapExactETHForTokens{value: ethAmountIn}(
+            excessiveAmountOutMin,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+    }
+
+    function testSwapExactETHForTokensExpiredDeadline() public {
+        uint256 amountTokenDesired = 1000 ether;
+        uint256 amountETHDesired = 10 ether;
+
+        vm.startPrank(deployer);
+        UP.approve(address(router), amountTokenDesired);
+        router.addLiquidityETH{value: amountETHDesired}(
+            address(UP),
+            amountTokenDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 ethAmountIn = 1 ether;
+        address[] memory path = new address[](2);
+        path[0] = address(weth);
+        path[1] = address(UP);
+
+        uint256 expiredDeadline = 100;
+        vm.warp(expiredDeadline + 1);
+
+        vm.expectRevert(bytes("UniswapV2Router:EXPIRED"));
+        router.swapExactETHForTokens{value: ethAmountIn}(
+            0,
+            path,
+            musk,
+            expiredDeadline
+        );
+
+        vm.stopPrank();
+    }
+
+    function testSwapExactETHForTokensToCustomAddress() public {
+        uint256 amountTokenDesired = 1000 ether;
+        uint256 amountETHDesired = 10 ether;
+
+        vm.startPrank(deployer);
+        UP.approve(address(router), amountTokenDesired);
+        router.addLiquidityETH{value: amountETHDesired}(
+            address(UP),
+            amountTokenDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 ethAmountIn = 1 ether;
+        address[] memory path = new address[](2);
+        path[0] = address(weth);
+        path[1] = address(UP);
+
+        uint256 deployerUPBefore = UP.balanceOf(deployer);
+        uint256 muskUPBefore = UP.balanceOf(musk);
+        uint256 muskETHBefore = musk.balance;
+
+        uint256[] memory amounts = router.swapExactETHForTokens{value: ethAmountIn}(
+            0,
+            path,
+            deployer, 
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+
+        uint256 deployerUPAfter = UP.balanceOf(deployer);
+        uint256 muskUPAfter = UP.balanceOf(musk);
+        uint256 muskETHAfter = musk.balance;
+
+        console.log("\n=== Custom Address ETH Swap ===");
+        console.log("Deployer UP before:", deployerUPBefore);
+        console.log("Deployer UP after:", deployerUPAfter);
+        console.log("Musk UP before:", muskUPBefore);
+        console.log("Musk UP after:", muskUPAfter);
+        console.log("Musk ETH before:", muskETHBefore);
+        console.log("Musk ETH after:", muskETHAfter);
+        console.log("Amount OUT (UP):", amounts[1]);
+
+        assertEq(
+            deployerUPAfter,
+            deployerUPBefore + amounts[1],
+            "Deployer should receive UP tokens"
+        );
+
+        assertEq(
+            muskUPAfter,
+            muskUPBefore,
+            "Musk UP balance should stay the same (tokens sent to deployer)"
+        );
+
+        assertEq(
+            muskETHAfter,
+            muskETHBefore - ethAmountIn,
+            "Musk should have paid ETH for the swap"
+        );
+    }
+
+    function testSwapExactETHForTokensRefundsExcess() public {
+        uint256 amountTokenDesired = 1000 ether;
+        uint256 amountETHDesired = 10 ether;
+
+        vm.startPrank(deployer);
+        UP.approve(address(router), amountTokenDesired);
+        router.addLiquidityETH{value: amountETHDesired}(
+            address(UP),
+            amountTokenDesired,
+            0,
+            0,
+            deployer,
+            block.timestamp + 300
+        );
+        vm.stopPrank();
+
+        vm.startPrank(musk);
+
+        uint256 ethAmountIn = 1 ether;
+        uint256 excessETH = 2 ether; 
+        uint256 totalETHSent = ethAmountIn + excessETH;
+
+        address[] memory path = new address[](2);
+        path[0] = address(weth);
+        path[1] = address(UP);
+
+        uint256 muskETHBefore = musk.balance;
+        uint256 muskUPBefore = UP.balanceOf(musk);
+
+        console.log("\n=== Before Excess ETH Swap ===");
+        console.log("Musk ETH balance:", muskETHBefore);
+        console.log("ETH sent:", totalETHSent);
+        console.log("Expected to use:", ethAmountIn);
+
+        // Note: swapExactETHForTokens uses the full msg.value as input amount
+        // It does NOT refund excess - the function uses msg.value as amountIn
+        uint256[] memory amounts = router.swapExactETHForTokens{value: totalETHSent}(
+            0,
+            path,
+            musk,
+            block.timestamp + 300
+        );
+
+        vm.stopPrank();
+
+        uint256 muskETHAfter = musk.balance;
+        uint256 muskUPAfter = UP.balanceOf(musk);
+
+        console.log("\n=== After Swap ===");
+        console.log("Musk ETH balance:", muskETHAfter);
+        console.log("ETH actually used:", amounts[0]);
+        console.log("UP received:", amounts[1]);
+
+        // swapExactETHForTokens uses ALL msg.value as input
+        assertEq(
+            amounts[0],
+            totalETHSent,
+            "All sent ETH should be used as input (no refund in swapExactETH)"
+        );
+
+        assertEq(
+            muskETHAfter,
+            muskETHBefore - totalETHSent,
+            "Musk should have spent all sent ETH"
+        );
+
+        assertEq(
+            muskUPAfter,
+            muskUPBefore + amounts[1],
+            "Musk should receive UP tokens"
+        );
+
+        assertTrue(
+            amounts[1] > 0,
+            "Should receive more tokens for more ETH"
         );
     }
 }
